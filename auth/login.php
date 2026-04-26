@@ -2,8 +2,14 @@
 require_once '../config/db.php';
 require_once '../includes/functions.php';
 
+// Jika sudah login, redirect berdasarkan role
 if (isLoggedIn()) {
-    redirect('/index.php');
+    if (isAdmin()) {
+        header('Location: ../admin/index.php');
+    } else {
+        header('Location: ../user/dashboard.php');
+    }
+    exit();
 }
 
 $error = '';
@@ -27,10 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             logActivity($conn, $user['id'], 'User logged in', "IP: {$_SERVER['REMOTE_ADDR']}");
             
             if ($user['role'] == 'admin') {
-                redirect('/admin/index.php');
+                header('Location: ../admin/index.php');
             } else {
-                redirect('/user/dashboard.php');
+                header('Location: ../user/dashboard.php');
             }
+            exit();
         } else {
             $error = "Invalid email or password!";
         }
@@ -46,19 +53,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - SaaS Panel</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/style.css">
 </head>
 <body class="bg-[#0f172a]">
     <div class="min-h-screen flex items-center justify-center p-4">
-        <div class="bg-[#1e293b] p-8 rounded-xl shadow-2xl w-full max-w-md">
-            <div class="text-center mb-8">
-                <h2 class="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-                    Welcome Back
-                </h2>
-                <p class="text-gray-400 mt-2">Login to your account</p>
+        <div class="bg-[#1e293b] p-6 md:p-8 rounded-xl shadow-2xl w-full max-w-md">
+            <div class="text-center mb-6 md:mb-8">
+                <a href="../index.php" class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent block mb-2">
+                    SaaS Panel
+                </a>
+                <p class="text-gray-400 text-sm md:text-base">Login to your account</p>
             </div>
             
             <?php if ($error): ?>
-                <div class="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg mb-4">
+                <div class="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded-lg mb-4 text-sm">
                     <?= $error ?>
                 </div>
             <?php endif; ?>
@@ -80,9 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </button>
             </form>
             
-            <div class="mt-6 text-center text-sm text-gray-400">
+            <div class="mt-6 pt-4 border-t border-gray-800 text-center text-sm text-gray-400">
                 Don't have an account? 
-                <a href="register.php" class="text-blue-500 hover:underline">Register</a>
+                <a href="register.php" class="text-blue-500 hover:underline">Register here</a>
+            </div>
+            <div class="mt-3 text-center text-xs text-gray-500">
+                <a href="../index.php" class="hover:text-gray-400">← Back to Home</a>
             </div>
         </div>
     </div>

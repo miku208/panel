@@ -7,5 +7,6 @@ if (isset($_SESSION['user_id'])) {
 }
 
 session_destroy();
-redirect('/index.php');
+header('Location: ../index.php');
+exit();
 ?>
