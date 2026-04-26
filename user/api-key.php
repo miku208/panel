@@ -22,7 +22,8 @@ if (isset($_GET['delete'])) {
     $key_id = (int)$_GET['delete'];
     mysqli_query($conn, "DELETE FROM api_keys WHERE id = $key_id AND user_id = $user_id");
     logActivity($conn, $user_id, 'Deleted API key', "Key ID: $key_id");
-    redirect('/user/api-key.php');
+    header('Location: api-key.php');
+    exit();
 }
 
 // Toggle API key status
@@ -32,7 +33,8 @@ if (isset($_GET['toggle'])) {
     $key = mysqli_fetch_assoc($result);
     $new_status = $key['is_active'] ? 0 : 1;
     mysqli_query($conn, "UPDATE api_keys SET is_active = $new_status WHERE id = $key_id");
-    redirect('/user/api-key.php');
+    header('Location: api-key.php');
+    exit();
 }
 
 $api_keys = mysqli_query($conn, "SELECT * FROM api_keys WHERE user_id = $user_id ORDER BY created_at DESC");
