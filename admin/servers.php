@@ -21,7 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     mysqli_query($conn, $query);
-    redirect('/admin/servers.php');
+    header('Location: servers.php');
+    exit();
 }
 
 // Handle server delete
@@ -29,7 +30,8 @@ if (isset($_GET['delete'])) {
     $server_id = (int)$_GET['delete'];
     mysqli_query($conn, "DELETE FROM servers WHERE id = $server_id");
     logActivity($conn, $_SESSION['user_id'], 'Deleted server', "Server ID: $server_id");
-    redirect('/admin/servers.php');
+    header('Location: servers.php');
+    exit();
 }
 
 // Handle status update
@@ -38,7 +40,8 @@ if (isset($_GET['status']) && isset($_GET['id'])) {
     $new_status = mysqli_real_escape_string($conn, $_GET['status']);
     mysqli_query($conn, "UPDATE servers SET status = '$new_status' WHERE id = $server_id");
     logActivity($conn, $_SESSION['user_id'], 'Changed server status', "Server ID: $server_id to $new_status");
-    redirect('/admin/servers.php');
+    header('Location: servers.php');
+    exit();
 }
 
 $servers_query = mysqli_query($conn, "SELECT * FROM servers ORDER BY created_at DESC");
@@ -101,12 +104,12 @@ if (isset($_GET['edit'])) {
                     <?php endif; ?>
                     <div>
                         <label class="block text-sm mb-2">Server Name</label>
-                        <input type="text" name="name" required value="<?= $edit_server['name'] ?? '' ?>" 
+                        <input type="text" name="name" required value="<?= htmlspecialchars($edit_server['name'] ?? '') ?>" 
                                class="w-full px-4 py-2 bg-[#0f172a] border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500">
                     </div>
                     <div>
                         <label class="block text-sm mb-2">IP Address</label>
-                        <input type="text" name="ip_address" required value="<?= $edit_server['ip_address'] ?? '' ?>" 
+                        <input type="text" name="ip_address" required value="<?= htmlspecialchars($edit_server['ip_address'] ?? '') ?>" 
                                class="w-full px-4 py-2 bg-[#0f172a] border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500">
                     </div>
                     <div>
@@ -127,12 +130,12 @@ if (isset($_GET['edit'])) {
                             <option value="maintenance" <?= ($edit_server['status'] ?? '') == 'maintenance' ? 'selected' : '' ?>>Maintenance</option>
                         </select>
                     </div>
-                    <div class="flex items-end">
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg font-semibold transition">
+                    <div class="flex items-end gap-2">
+                        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded-lg font-semibold transition">
                             <?= $edit_server ? 'Update Server' : 'Add Server' ?>
                         </button>
                         <?php if ($edit_server): ?>
-                            <a href="servers.php" class="ml-2 w-full bg-gray-600 hover:bg-gray-700 py-2 rounded-lg font-semibold transition text-center">
+                            <a href="servers.php" class="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded-lg font-semibold transition text-center">
                                 Cancel
                             </a>
                         <?php endif; ?>
@@ -141,7 +144,7 @@ if (isset($_GET['edit'])) {
             </div>
 
             <!-- Servers List -->
-            <div class="bg-[#1e293b] rounded-xl border border-gray-800 overflow-hidden">
+            <div class="bg-[#1e293b] rounded-xl border border-gray-800 overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-[#0f172a] border-b border-gray-800">
                         <tr>

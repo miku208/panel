@@ -10,25 +10,29 @@ if (isset($_GET['action'])) {
     if ($_GET['action'] == 'delete') {
         mysqli_query($conn, "DELETE FROM users WHERE id = $user_id AND role != 'admin'");
         logActivity($conn, $_SESSION['user_id'], 'Deleted user', "User ID: $user_id");
-        redirect('/admin/users.php');
+        header('Location: users.php');
+        exit();
     }
     
     if ($_GET['action'] == 'ban') {
         mysqli_query($conn, "UPDATE users SET status = 'banned' WHERE id = $user_id");
         logActivity($conn, $_SESSION['user_id'], 'Banned user', "User ID: $user_id");
-        redirect('/admin/users.php');
+        header('Location: users.php');
+        exit();
     }
     
     if ($_GET['action'] == 'unban') {
         mysqli_query($conn, "UPDATE users SET status = 'active' WHERE id = $user_id");
         logActivity($conn, $_SESSION['user_id'], 'Unbanned user', "User ID: $user_id");
-        redirect('/admin/users.php');
+        header('Location: users.php');
+        exit();
     }
     
     if ($_GET['action'] == 'make-admin') {
         mysqli_query($conn, "UPDATE users SET role = 'admin' WHERE id = $user_id");
         logActivity($conn, $_SESSION['user_id'], 'Promoted to admin', "User ID: $user_id");
-        redirect('/admin/users.php');
+        header('Location: users.php');
+        exit();
     }
 }
 
@@ -46,7 +50,7 @@ $users_query = mysqli_query($conn, "SELECT * FROM users ORDER BY created_at DESC
 </head>
 <body class="bg-[#0f172a] text-white">
     <div class="flex h-screen">
-        <!-- Sidebar (same as admin dashboard) -->
+        <!-- Sidebar -->
         <div class="w-64 bg-[#1e293b] border-r border-gray-800 fixed h-full">
             <div class="p-6">
                 <h2 class="text-2xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
@@ -79,7 +83,7 @@ $users_query = mysqli_query($conn, "SELECT * FROM users ORDER BY created_at DESC
                 <p class="text-gray-400 mt-1">Manage all registered users</p>
             </div>
 
-            <div class="bg-[#1e293b] rounded-xl border border-gray-800 overflow-hidden">
+            <div class="bg-[#1e293b] rounded-xl border border-gray-800 overflow-x-auto">
                 <table class="w-full">
                     <thead class="bg-[#0f172a] border-b border-gray-800">
                         <tr>

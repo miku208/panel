@@ -11,12 +11,18 @@ $active_servers = getActiveServers($conn);
 $ram_usage = getTotalRAMUsage($conn);
 $storage_usage = getTotalStorageUsage($conn);
 
-// Get user growth data (simulated)
-$user_growth = [];
-for ($i = 5; $i >= 0; $i--) {
-    $month = date('M', strtotime("-$i months"));
-    $user_growth['labels'][] = $month;
-    $user_growth['data'][] = rand(50, 200);
+// Get user growth data
+$growth_query = "SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count 
+                 FROM users 
+                 WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+                 GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+                 ORDER BY month ASC";
+$growth_result = mysqli_query($conn, $growth_query);
+$user_growth_labels = [];
+$user_growth_data = [];
+while ($row = mysqli_fetch_assoc($growth_result)) {
+    $user_growth_labels[] = $row['month'];
+    $user_growth_data[] = $row['count'];
 }
 
 // Get server usage data
@@ -163,10 +169,10 @@ $activity_query = mysqli_query($conn, "SELECT * FROM activity_logs ORDER BY crea
         new Chart(userCtx, {
             type: 'line',
             data: {
-                labels: <?= json_encode($user_growth['labels']) ?>,
+                labels: <?= json_encode($user_growth_labels) ?>,
                 datasets: [{
                     label: 'New Users',
-                    data: <?= json_encode($user_growth['data']) ?>,
+                    data: <?= json_encode($user_growth_data) ?>,
                     borderColor: '#3b82f6',
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     tension: 0.4,
