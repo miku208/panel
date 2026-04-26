@@ -1,0 +1,32 @@
+<?php
+session_start();
+
+$host = 'localhost';
+$dbname = 'saas_panel';
+$username = 'root';
+$password = '';
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    die("Connection failed: " . $e->getMessage());
+}
+
+// Google OAuth Config
+define('GOOGLE_CLIENT_ID', 'YOUR_GOOGLE_CLIENT_ID');
+define('GOOGLE_CLIENT_SECRET', 'YOUR_GOOGLE_CLIENT_SECRET');
+define('GOOGLE_REDIRECT_URL', 'http://localhost/project/auth/google-callback.php');
+
+// Payment Gateway Config (Tripay)
+define('TRIPAY_API_KEY', 'YOUR_TRIPAY_API_KEY');
+define('TRIPAY_PRIVATE_KEY', 'YOUR_TRIPAY_PRIVATE_KEY');
+define('TRIPAY_MERCHANT_CODE', 'YOUR_MERCHANT_CODE');
+define('TRIPAY_MODE', 'development'); // development or production
+
+// Midtrans Config (Alternative)
+define('MIDTRANS_SERVER_KEY', 'YOUR_MIDTRANS_SERVER_KEY');
+define('MIDTRANS_CLIENT_KEY', 'YOUR_MIDTRANS_CLIENT_KEY');
+define('MIDTRANS_IS_PRODUCTION', false);
+?>
