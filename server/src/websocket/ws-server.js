@@ -228,6 +228,17 @@ function handleDeviceMessage(ws, msg) {
       return;
     }
 
+    case 'device_state': {
+      // Status lifecycle device: starting | online | reconnecting.
+      // starting = boot selesai, service jalan, belum authenticated WS.
+      // online   = authenticated di WS. reconnecting = koneksi hilang.
+      const state = ['starting', 'online', 'reconnecting'].includes(msg.state) ? msg.state : null;
+      if (!state) return;
+      lastDeviceState.set(ws.deviceId, { state, ts: Date.now() });
+      notifyControllers(device.user_id, { type: 'device_state', deviceId: ws.deviceId, state });
+      return;
+    }
+
     case 'command_result': {
       notifyControllers(device.user_id, {
         type: 'command_result',
@@ -341,6 +352,7 @@ function sanitizeState(state) {
 }
 
 const lastDeviceInfo = new Map(); // deviceId -> {info, ts}
+const lastDeviceState = new Map(); // deviceId -> {state, ts} (starting/online/reconnecting)
 
 // ---------------------------------------------------------------------------
 // Pesan dari CONTROLLER
@@ -641,6 +653,10 @@ function getCachedDeviceInfo(deviceId) {
   return lastDeviceInfo.get(deviceId) || null;
 }
 
+function getCachedDeviceState(deviceId) {
+  return lastDeviceState.get(deviceId) || null;
+}
+
 function stats() {
   return {
     devicesOnline: [...deviceSockets.keys()].length,
@@ -649,7 +665,7 @@ function stats() {
 }
 
 function getWsServer() {
-  return { attach, isDeviceOnline, kickDevice, getCachedDeviceInfo, stats };
+  return { attach, isDeviceOnline, kickDevice, getCachedDeviceInfo, getCachedDeviceState, stats };
 }
 
 module.exports = { getWsServer };

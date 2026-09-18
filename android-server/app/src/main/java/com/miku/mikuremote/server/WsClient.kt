@@ -26,6 +26,7 @@ class WsClient(
     private val onState: (ConnState) -> Unit,
     private val onMessage: (JSONObject) -> Unit,
     private val onBinary: (ByteString) -> Unit = {},
+    private val onAuthOk: (() -> Unit)? = null,
 ) {
     enum class ConnState { CONNECTING, ONLINE, OFFLINE }
 
@@ -89,6 +90,7 @@ class WsClient(
                 startHeartbeat(webSocket)
                 setState(ConnState.ONLINE)
                 LogBuffer.log("INFO", "WebSocket connected")
+                onAuthOk?.invoke()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -100,7 +102,10 @@ class WsClient(
                         stopping.set(true)
                         setState(ConnState.OFFLINE)
                     }
-                    "auth_ok" -> LogBuffer.log("INFO", "Server authenticated")
+                    "auth_ok" -> {
+                        LogBuffer.log("INFO", "Server authenticated")
+                        onAuthOk?.invoke()
+                    }
                     "heartbeat_ack" -> { /* koneksi sehat */ }
                     else -> onMessage(obj)
                 }
@@ -140,5 +145,16 @@ class WsClient(
         attempt = (attempt + 1).coerceAtMost(6)
         LogBuffer.log("INFO", "Reconnect dalam ${delayMs / 1000}s")
         scheduler.schedule({ if (!stopping.get()) connect() }, delayMs, TimeUnit.MILLISECONDS)
+    }
+
+    /**
+     * Paksa reconnect sekarang (mis. network callback "internet kembali").
+     * Tidak dobel koneksi: socket lama ditutup dulu, attempt di-reset.
+     */
+    fun reconnectNow() {
+        if (stopping.get()) return
+        attempt = 0
+        try { ws?.close(1000, "network_restored") } catch (_: Exception) {}
+        connect()
     }
 }

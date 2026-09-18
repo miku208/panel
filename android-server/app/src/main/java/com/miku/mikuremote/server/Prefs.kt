@@ -27,6 +27,19 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_PRIVATE, null)
         set(v) = sp.edit().putString(KEY_PRIVATE, v).apply()
 
+    /**
+     * Auto Start Server: mulai service otomatis setelah boot (default ON).
+     * BootReceiver hanya jalan jika device sudah paired + autoStart ON.
+     */
+    var autoStart: Boolean
+        get() = sp.getBoolean(KEY_AUTO_START, true)
+        set(v) = sp.edit().putBoolean(KEY_AUTO_START, v).apply()
+
+    /** Server Mode dipersistenkan agar kembali ON setelah reboot. */
+    var serverModeOn: Boolean
+        get() = sp.getBoolean(KEY_SERVER_MODE, false)
+        set(v) = sp.edit().putBoolean(KEY_SERVER_MODE, v).apply()
+
     val isPaired: Boolean get() = !deviceToken.isNullOrBlank()
 
     fun unpair() {
@@ -39,5 +52,7 @@ class Prefs(context: Context) {
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_NAME = "device_name"
         private const val KEY_PRIVATE = "private_key"
+        private const val KEY_AUTO_START = "auto_start"
+        private const val KEY_SERVER_MODE = "server_mode_on"
     }
 }

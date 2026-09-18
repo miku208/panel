@@ -1,11 +1,25 @@
 # MikuRemote
 
 Aplikasi untuk mengontrol dan memantau HP Android lain yang dipakai sebagai
-mini server di rumah. **v0.4.0: front camera + Server Guard (Phase 3B)** —
-remote front camera H.264, layar warning custom yang teks/kontaknya bisa
-diubah dari controller (tanpa rebuild APK), resource monitoring, dan
-manajemen konflik screen/camera. Plus semua fitur v0.3.0 (live screen +
-screenshot) dan v0.2.x.
+mini server di rumah. **v0.5.0: Auto Start / Always Connected (Phase 4)** —
+HP server dibiarkan menyala tanpa pernah dibuka lagi: setelah boot, service
+otomatis start (RECEIVE_BOOT_COMPLETED resmi), connect VPS, dan muncul ONLINE
+di controller. Plus semua fitur v0.4.0 (front camera + Server Guard),
+v0.3.0 (live screen + screenshot), dan v0.2.x.
+
+> **v0.5.0 (Phase 4: unattended):**
+> - **BootReceiver**: BOOT_COMPLETED → auto-start ServerService (hanya jika
+>   paired + Auto Start ON). Tidak perlu buka APK setelah reboot.
+> - **AUTO START SERVER** toggle (default ON) + panel **SERVER RELIABILITY**
+>   (checklist pairing/auto-start/battery/camera/VPS + tombol battery settings
+>   resmi, tanpa mengubah setting sistem diam-diam).
+> - **Network callback**: internet kembali → reconnect langsung (tanpa polling).
+> - **Persistensi**: Server Mode & Server Guard kembali sesuai state sebelum
+>   reboot; guard config di-sync ulang dari VPS setelah authenticate.
+> - **Status lifecycle**: device melaporkan `starting` / `online` /
+>   `reconnecting`; controller menampilkan STARTING / ONLINE / RECONNECTING.
+> - Single-instance service (BootReceiver + Activity + system restart tidak
+>   membuat koneksi WS ganda).
 
 > **v0.4.0 (Phase 3B):**
 > - **FRONT CAMERA**: Camera2 → MediaCodec H.264 → WS binary relay → decoder
@@ -90,7 +104,8 @@ mikuremote/
 | 2 | Device info, heartbeat, torch ON/OFF, server mode | ✅ Selesai |
 | 3 | MediaProjection, live screen, screenshot | ✅ Selesai |
 | 3B | Front camera, Server Guard, remote config, konflik stream, watchdog | ✅ Selesai |
-| 4 | Real-time logs (sudah ada relay), hardening lanjutan | ⏳ Sebagian |
+| 4 | Auto Start (boot receiver), always connected, reliability panel | ✅ Selesai |
+| 5 | Hardening lanjutan, rotasi kunci device, audit log VPS | ⏳ Sebagian |
 
 Yang sudah berfungsi end-to-end: register/login, pairing via kode 6 digit,
 device online/offline realtime, torch ON/OFF, server mode (blackout),

@@ -56,6 +56,13 @@ class ServerService : Service() {
         ServiceBus.setGuardEnabled(guardStore.config.enabled)
         ServiceBus.setScreenState("READY")
         ServiceBus.setCameraState("READY")
+
+        // Restore Server Mode dari persistence (reboot -> tetap ON jika sebelumnya ON).
+        serverModeOn = prefs.serverModeOn
+        ServiceBus.setServerMode(serverModeOn)
+        if (serverModeOn) BlackoutActivity.show(this)
+
+        registerNetworkCallback()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -66,6 +73,7 @@ class ServerService : Service() {
             }
             ACTION_SET_SERVER_MODE -> {
                 serverModeOn = intent.getBooleanExtra(EXTRA_ON, false)
+                prefs.serverModeOn = serverModeOn // persisten agar selamat reboot
                 ServiceBus.setServerMode(serverModeOn)
                 if (!serverModeOn) BlackoutActivity.hide(this)
             }
@@ -73,6 +81,8 @@ class ServerService : Service() {
 
         startForegroundWithNotification("Connecting…")
 
+        // Single-instance guard: pemanggil start() berulang (BootReceiver +
+        // Activity + system restart) tidak membuat koneksi WS kedua.
         if (ws == null) {
             if (!prefs.isPaired) {
                 LogBuffer.log("ERROR", "Device belum dipairing")
@@ -97,12 +107,52 @@ class ServerService : Service() {
                 when (state) {
                     WsClient.ConnState.ONLINE -> updateNotification("Connected")
                     WsClient.ConnState.CONNECTING -> updateNotification("Connecting…")
-                    WsClient.ConnState.OFFLINE -> updateNotification("Reconnecting…")
+                    WsClient.ConnState.OFFLINE -> {
+                        updateNotification("Reconnecting…")
+                        // Laporkan RECONNECTING ke controller (sekali per transisi).
+                        if (lastReportedOnline) {
+                            lastReportedOnline = false
+                            ws?.send(JSONObject().put("type", "device_state")
+                                .put("state", "reconnecting"))
+                        }
+                    }
                 }
             },
             onMessage = { msg -> handleCommand(msg) },
+            onAuthOk = {
+                // Sesudah authenticated: status online + sync config guard.
+                // (Berlaku juga setelah reconnect — controller selalu up-to-date.)
+                lastReportedOnline = true
+                ws?.send(JSONObject().put("type", "device_state").put("state", "online"))
+                ws?.send(JSONObject().put("type", "guard_config_get"))
+            },
         )
         ws?.start()
+    }
+
+    @Volatile private var lastReportedOnline = false
+
+    /**
+     * Network callback (resmi): internet kembali -> reconnect sekarang.
+     * Tidak ada polling berkala.
+     */
+    private fun registerNetworkCallback() {
+        try {
+            val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return
+            val req = android.net.NetworkRequest.Builder()
+                .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    LogBuffer.log("INFO", "[NET] Internet tersedia — reconnect")
+                    ws?.reconnectNow()
+                }
+            }
+            networkCallback = cb
+            cm.registerNetworkCallback(req, cb)
+        } catch (e: Exception) {
+            LogBuffer.log("WARN", "Network callback gagal: ${e.message}")
+        }
     }
 
     /**
@@ -495,6 +545,7 @@ class ServerService : Service() {
         }
         "SERVER_MODE_ON" -> {
             serverModeOn = true
+            prefs.serverModeOn = true
             ServiceBus.setServerMode(true)
             BlackoutActivity.show(this)
             LogBuffer.log("INFO", "Server mode ON")
@@ -502,6 +553,7 @@ class ServerService : Service() {
         }
         "SERVER_MODE_OFF" -> {
             serverModeOn = false
+            prefs.serverModeOn = false
             ServiceBus.setServerMode(false)
             BlackoutActivity.hide(this)
             LogBuffer.log("INFO", "Server mode OFF")
@@ -652,7 +704,14 @@ class ServerService : Service() {
         nm.notify(NOTIF_ID, buildNotification(text))
     }
 
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
     override fun onDestroy() {
+        try {
+            networkCallback?.let { cb ->
+                getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(cb)
+            }
+        } catch (_: Exception) {}
         screen.release()
         camera.release()
         ws?.stop()

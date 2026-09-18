@@ -74,6 +74,8 @@ private fun MikuRemoteApp() {
     val infoMap = remember { mutableStateMapOf<String, JSONObject>() }
     val torchMap = remember { mutableStateMapOf<String, Boolean>() }
     val serverModeMap = remember { mutableStateMapOf<String, Boolean>() }
+    // Lifecycle state device: starting/online/reconnecting (null = tidak diketahui).
+    val stateMap = remember { mutableStateMapOf<String, String>() }
     val logs = remember { mutableStateListOf<LogEntryUi>() }
     val snackbar = remember { SnackbarHostState() }
 
@@ -103,7 +105,10 @@ private fun MikuRemoteApp() {
         }
         list.onSuccess { rows ->
             devices.clear(); devices.addAll(rows)
-            rows.forEach { onlineMap[it.id] = it.online }
+            rows.forEach {
+                onlineMap[it.id] = it.online
+                it.state?.let { st -> stateMap[it.id] = st }
+            }
             screen = Screen.Devices
         }.onFailure { e -> bootError = e.message }
         bootBusy = false
@@ -126,6 +131,17 @@ private fun MikuRemoteApp() {
                     if (!msg.optBoolean("online")) {
                         torchMap[id] = false
                         serverModeMap[id] = false
+                        stateMap.remove(id)
+                    } else {
+                        stateMap[id] = "starting" // device connected WS, belum kirim state online
+                    }
+                }
+                "device_state" -> {
+                    val id = msg.optString("deviceId")
+                    when (val st = msg.optString("state")) {
+                        "online" -> stateMap[id] = "online"
+                        "starting" -> stateMap[id] = "starting"
+                        "reconnecting" -> stateMap[id] = "reconnecting"
                     }
                 }
                 "device_info" -> {
@@ -204,7 +220,10 @@ private fun MikuRemoteApp() {
             val result = withContext(Dispatchers.IO) { Api.listDevices(prefs.vpsUrl, prefs.userToken!!) }
             result.onSuccess { list ->
                 devices.clear(); devices.addAll(list)
-                list.forEach { onlineMap[it.id] = it.online }
+                list.forEach {
+                    onlineMap[it.id] = it.online
+                    it.state?.let { st -> stateMap[it.id] = st }
+                }
             }
         }
     }
@@ -232,7 +251,7 @@ private fun MikuRemoteApp() {
                     },
                 )
                 screen is Screen.Devices -> DeviceListScreen(
-                    prefs, devices, onlineMap, infoMap,
+                    prefs, devices, onlineMap, infoMap, stateMap,
                     conn = conn,
                     onRefresh = {
                         scope.launch {
@@ -241,7 +260,10 @@ private fun MikuRemoteApp() {
                             }
                             result.onSuccess { list ->
                                 devices.clear(); devices.addAll(list)
-                                list.forEach { onlineMap[it.id] = it.online }
+                                list.forEach {
+                                    onlineMap[it.id] = it.online
+                                    it.state?.let { st -> stateMap[it.id] = st }
+                                }
                             }.onFailure { showSnack(it.message ?: "Gagal memuat device") }
                         }
                     },
@@ -254,6 +276,7 @@ private fun MikuRemoteApp() {
                         prefs = prefs,
                         deviceId = s.deviceId, name = s.name,
                         online = onlineMap[s.deviceId] ?: false,
+                        deviceState = stateMap[s.deviceId],
                         info = infoMap[s.deviceId],
                         torchOn = torchMap[s.deviceId] ?: false,
                         serverModeOn = serverModeMap[s.deviceId] ?: false,
@@ -343,6 +366,21 @@ private fun relTime(iso: String?): String {
     } catch (_: Exception) { iso }
 }
 
+// Label/warna status lifecycle device (Phase 4: unattended).
+private fun deviceStateLabel(online: Boolean, state: String?): String = when {
+    !online -> "OFFLINE"
+    state == "starting" -> "STARTING"
+    state == "reconnecting" -> "RECONNECTING"
+    else -> "ONLINE"
+}
+
+private fun deviceStateColor(online: Boolean, state: String?): Color = when {
+    !online -> Danger
+    state == "reconnecting" -> Warn
+    state == "starting" -> Warn
+    else -> Accent
+}
+
 @Composable
 private fun StatusDot(online: Boolean, size: Int = 8) {
     Box(
@@ -419,6 +457,7 @@ private fun DeviceListScreen(
     devices: List<DeviceRow>,
     onlineMap: Map<String, Boolean>,
     infoMap: Map<String, JSONObject>,
+    stateMap: Map<String, String>,
     conn: ControllerSocket.Conn,
     onRefresh: () -> Unit,
     onOpenDevice: (DeviceRow) -> Unit,
@@ -465,8 +504,8 @@ private fun DeviceListScreen(
                             StatusDot(online)
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (online) "ONLINE" else "OFFLINE",
-                                color = if (online) Accent else Danger,
+                                deviceStateLabel(online, stateMap[d.id]),
+                                color = deviceStateColor(online, stateMap[d.id]),
                                 fontSize = 12.sp, fontWeight = FontWeight.Medium
                             )
                         }
@@ -505,6 +544,7 @@ private fun DetailScreen(
     deviceId: String,
     name: String,
     online: Boolean,
+    deviceState: String?,
     info: JSONObject?,
     torchOn: Boolean,
     serverModeOn: Boolean,
@@ -541,8 +581,8 @@ private fun DetailScreen(
                     StatusDot(online)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        if (online) "ONLINE" else "OFFLINE",
-                        color = if (online) Accent else Danger,
+                        deviceStateLabel(online, deviceState),
+                        color = deviceStateColor(online, deviceState),
                         fontSize = 12.sp
                     )
                 }

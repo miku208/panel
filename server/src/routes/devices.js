@@ -11,11 +11,13 @@ const config = require('../config');
 const router = express.Router();
 router.use(requireUser);
 
-// GET /api/devices -> daftar device milik user + status online
+// GET /api/devices -> daftar device milik user + status online + lifecycle state
 router.get('/devices', (req, res) => {
   const devices = store.listDevices(req.userId).map((d) => ({
     ...d,
     online: getWsServer().isDeviceOnline(d.id),
+    // starting/online/reconnecting sesuai laporan device terakhir (Phase 4).
+    state: getWsServer().getCachedDeviceState(d.id)?.state || null,
   }));
   res.json({ devices });
 });

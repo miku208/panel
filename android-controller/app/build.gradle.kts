@@ -20,8 +20,8 @@ android {
         applicationId = "com.miku.mikuremote.controller"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.5.0"
         buildConfigField("String", "DEFAULT_VPS_URL", "\"https://ashimusic.biz.id/mikuremote\"")
         // Kunci mode pribadi; kosong = diisi manual lewat UI.
         buildConfigField("String", "PRIVATE_KEY", "\"${keystoreProps.getProperty("privateKey") ?: ""}\"")

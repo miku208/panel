@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,6 +59,17 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 23) cameraPerm.launch(Manifest.permission.CAMERA)
     }
 
+    private fun hasCameraPermission(): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CAMERA
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Status battery optimization resmi (PowerManager.isIgnoringBatteryOptimizations). */
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val pm = getSystemService(android.os.PowerManager::class.java) ?: return false
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -92,6 +104,10 @@ class MainActivity : ComponentActivity() {
         val guardEnabled by ServiceBus.guardEnabled.collectAsState()
         val logs by LogBuffer.entries.collectAsState()
         val scope = lifecycleScope
+
+        // Auto Start: toggle persisten (BootReceiver membaca nilai ini setelah reboot).
+        var autoStart by remember { mutableStateOf(prefs.autoStart) }
+        var batOptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations()) }
 
         var editUrl by remember { mutableStateOf(false) }
         var vpsUrl by remember { mutableStateOf(prefs.vpsUrl) }
@@ -139,6 +155,58 @@ class MainActivity : ComponentActivity() {
                                     "Screen: $screenState   •   Camera: $cameraState   •   Guard: ${if (guardEnabled) "ON" else "OFF"}",
                                     color = TextDim, fontSize = 12.sp
                                 )
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+
+                        // ---- Auto Start + Reliability (Phase 4: unattended) ----
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("AUTO START SERVER", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            "Automatically start MikuRemote Server after device boot.",
+                                            color = TextDim, fontSize = 12.sp
+                                        )
+                                    }
+                                    Switch(
+                                        checked = autoStart,
+                                        onCheckedChange = {
+                                            prefs.autoStart = it
+                                            autoStart = it
+                                            LogBuffer.log("INFO", "Auto Start ${if (it) "ON" else "OFF"}")
+                                        }
+                                    )
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Text("SERVER RELIABILITY", color = TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(6.dp))
+                                ReliabilityRow("Device paired", paired)
+                                ReliabilityRow("Auto Start enabled", autoStart)
+                                ReliabilityRow("Battery optimization ignored", batOptimized)
+                                ReliabilityRow("Camera permission", hasCameraPermission())
+                                ReliabilityRow("VPS ${when (wsState) { "ONLINE" -> "connected"; "CONNECTING" -> "connecting…"; else -> "disconnected" }}", wsState == "ONLINE")
+                                if (!batOptimized) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "Untuk server 24/7, izinkan MikuRemote berjalan di background dan " +
+                                            "nonaktifkan battery restriction melalui pengaturan sistem (resmi).",
+                                        color = TextDim, fontSize = 11.sp, lineHeight = 15.sp
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    OutlinedButton(onClick = {
+                                        try {
+                                            startActivity(
+                                                android.content.Intent(
+                                                    android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                                                )
+                                            )
+                                        } catch (e: Exception) {
+                                            LogBuffer.log("WARN", "Gagal buka settings battery: ${e.message}")
+                                        }
+                                    }) { Text("Battery settings") }
+                                }
                             }
                         }
                         Spacer(Modifier.height(14.dp))
@@ -320,5 +388,18 @@ class MainActivity : ComponentActivity() {
             .setAction(ServerService.ACTION_SET_SERVER_MODE)
             .putExtra(ServerService.EXTRA_ON, on)
         startService(i)
+    }
+}
+
+@Composable
+private fun ReliabilityRow(label: String, ok: Boolean) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(
+            if (ok) "✓" else "•",
+            color = if (ok) Accent else Color(0xFFE3B341),
+            fontSize = 13.sp,
+            modifier = Modifier.width(20.dp)
+        )
+        Text(label, color = if (ok) TextMain else TextDim, fontSize = 13.sp)
     }
 }

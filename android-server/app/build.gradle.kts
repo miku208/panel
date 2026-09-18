@@ -20,8 +20,8 @@ android {
         applicationId = "com.miku.mikuremote.server"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.4.0"
+        versionCode = 7
+        versionName = "0.5.0"
         // URL VPS production (dengan path /mikuremote); bisa dioverride lewat settings di aplikasi.
         buildConfigField("String", "DEFAULT_VPS_URL", "\"https://ashimusic.biz.id/mikuremote\"")
         // Kunci mode pribadi; kosong = diisi manual lewat UI.

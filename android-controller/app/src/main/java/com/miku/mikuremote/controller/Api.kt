@@ -14,6 +14,7 @@ data class DeviceRow(
     val online: Boolean,
     val lastSeen: String?,
     val createdAt: String?,
+    val state: String? = null, // starting | online | reconnecting (Phase 4)
 )
 
 /** REST client. Semua request ber-timeout, error selalu berpesan jelas. */
@@ -82,6 +83,7 @@ object Api {
                             online = d.optBoolean("online"),
                             lastSeen = d.optString("last_seen", null),
                             createdAt = d.optString("created_at", null),
+                            state = if (d.has("state") && !d.isNull("state")) d.optString("state", null) else null,
                         )
                     )
                 }
