@@ -36,6 +36,7 @@ class ServerService : Service() {
     private lateinit var camera: CameraCaptureEngine
     private lateinit var guardStore: GuardConfigStore
     private var ws: WsClient? = null
+    private lateinit var files: FileTransferHandler
 
     private var torchOn = false
     private var serverModeOn = false
@@ -63,6 +64,13 @@ class ServerService : Service() {
         if (serverModeOn) BlackoutActivity.show(this)
 
         registerNetworkCallback()
+
+        // Phase F: remote file manager (browse + download/upload streaming).
+        files = FileTransferHandler(
+            this, guardStore,
+            send = { obj -> ws?.send(obj) },
+            sendBinary = { bytes -> ws?.sendBinary(bytes) },
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -120,6 +128,7 @@ class ServerService : Service() {
                 }
             },
             onMessage = { msg -> handleCommand(msg) },
+            onBinary = { bytes -> files.onBinary(bytes.toByteArray()) },
             onAuthOk = {
                 // Sesudah authenticated: status online + sync config guard.
                 // (Berlaku juga setelah reconnect — controller selalu up-to-date.)
@@ -251,8 +260,67 @@ class ServerService : Service() {
                 }
             }
             "guard_config" -> handleGuardConfig(msg)
+            "file_op" -> handleFileOp(msg)
+            "file_ack" -> files.onAck(msg.optString("transferId"), msg.optInt("ackedSeq", -1))
+            "file_done" -> files.endUpload(msg.optString("transferId"), msg.optLong("crc32", 0))
+            "file_cancel" -> files.cancel(msg.optString("transferId"))
         }
     }
+
+    // ------------------------------------------------------------------
+    // Phase F: remote file manager ops (semua di Dispatchers.IO)
+    // ------------------------------------------------------------------
+
+    private fun handleFileOp(msg: JSONObject) {
+        val op = msg.optString("op")
+        val requestId = msg.optString("requestId").take(64)
+        scope.launch(Dispatchers.IO) {
+            when (op) {
+                "list" -> {
+                    val rel = msg.optString("path", "")
+                    val res = FileManager.list(rel)
+                    if (res != null) {
+                        ws?.send(JSONObject().put("type", "file_result").put("op", "list")
+                            .put("requestId", requestId).put("success", true).put("data", res))
+                    } else {
+                        ws?.send(JSONObject().put("type", "file_result").put("op", "list")
+                            .put("requestId", requestId).put("success", false)
+                            .put("error", "Folder tidak ditemukan / di luar root"))
+                    }
+                }
+                "mkdir" -> ws?.send(opResult("mkdir", requestId,
+                    FileManager.mkdir(msg.optString("path"))))
+                "rename" -> ws?.send(opResult("rename", requestId,
+                    FileManager.rename(msg.optString("path"), msg.optString("newName"))))
+                "delete" -> ws?.send(opResult("delete", requestId,
+                    FileManager.delete(msg.optString("path"))))
+                "stat" -> {
+                    val st = FileManager.stat(msg.optString("path"))
+                    ws?.send(JSONObject().put("type", "file_result").put("op", "stat")
+                        .put("requestId", requestId).put("success", st != null)
+                        .put("data", st))
+                }
+                "readText" -> {
+                    val res = FileManager.readText(msg.optString("path"))
+                    ws?.send(JSONObject().put("type", "file_result").put("op", "readText")
+                        .put("requestId", requestId).put("success", res != null)
+                        .put("data", res))
+                }
+                "download" -> files.startDownload(msg.optString("path"),
+                    msg.optString("transferId"))
+                "upload" -> files.startUpload(msg.optString("transferId"),
+                    msg.optString("path"), msg.optString("name"), msg.optLong("size", 0))
+                else -> ws?.send(JSONObject().put("type", "file_result").put("op", op)
+                    .put("requestId", requestId).put("success", false)
+                    .put("error", "Operasi tidak dikenal"))
+            }
+        }
+    }
+
+    private fun opResult(op: String, requestId: String, ok: Boolean): JSONObject =
+        JSONObject().put("type", "file_result").put("op", op)
+            .put("requestId", requestId).put("success", ok)
+            .put("error", if (ok) null else "Operasi gagal (path tidak valid / di luar root)")
 
     // ------------------------------------------------------------------
     // Phase 3B: Server Guard config (remote configurable)
@@ -716,6 +784,7 @@ class ServerService : Service() {
         } catch (_: Exception) {}
         screen.release()
         camera.release()
+        files.cancelAll() // Phase F: tutup transfer file aktif
         ws?.stop()
         ws = null
         scope.cancel()

@@ -66,6 +66,9 @@ object ControllerSocket {
 
     fun send(obj: JSONObject): Boolean = ws?.send(obj.toString()) ?: false
 
+    /** Kirim frame binary ke VPS (hanya dipakai transfer file, Phase F). */
+    fun sendBinary(bytes: ByteArray): Boolean = ws?.send(okio.ByteString.of(*bytes)) ?: false
+
     private fun connect() {
         if (stopping.get()) return
         _state.value = Conn.CONNECTING

@@ -33,6 +33,10 @@ const controllerShots = new Map();
 const controllerCameras = new Map();
 /** @type {Map<string, Map<WebSocket, NodeJS.Timeout>>} deviceId -> (controller ws -> timeout no-frame) */
 const deviceCameraWatchdogs = new Map();
+/** @type {Map<WebSocket, Set<string>>} controller ws -> deviceId dengan transfer file aktif (Phase F) */
+const controllerFiles = new Map();
+/** @type {Map<string, Map<WebSocket, NodeJS.Timeout>>} deviceId -> (controller ws -> timeout file watchdog) */
+const deviceFileWatchdogs = new Map();
 
 let httpServer = null;
 
@@ -106,11 +110,26 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // Frame binary hanya berarti apa-apa setelah device authenticated.
+    // Frame binary hanya berarti apa-apa setelah klien authenticated.
     if (isBinary) {
-      if (!ws.authenticated || ws.role !== 'device') return;
+      if (!ws.authenticated) return;
       if (data.length > config.maxBinaryFrameBytes) return; // buang frame kebesaran
-      relayBinaryFromDevice(ws, data);
+      if (ws.role === 'device') {
+        relayBinaryFromDevice(ws, data);
+      } else if (ws.role === 'controller') {
+        // Phase F: binary controller -> device HANYA untuk transfer file yang
+        // terdaftar (upload chunk). Tidak ada jalur binary lain dari controller.
+        const files = controllerFiles.get(ws);
+        if (!files || files.size === 0) return;
+        for (const deviceId of files) {
+          if (!store.getDeviceForUser(deviceId, ws.userId)) continue; // ownership
+          const sockets = deviceSockets.get(deviceId);
+          if (!sockets) continue;
+          for (const s of sockets) {
+            try { s.send(data, { binary: true }); } catch { /* skip */ }
+          }
+        }
+      }
       return;
     }
 
@@ -172,6 +191,7 @@ function handleAuth(ws, msg) {
     controllerSockets.get(ws.userId).add(ws);
     controllerStreams.set(ws, new Set());
     controllerCameras.set(ws, new Set());
+    controllerFiles.set(ws, new Set());
 
     safeSend(ws, { type: 'auth_ok', role: 'controller', username: payload.username || null });
     // Snapshot status device milik user ini supaya UI langsung tahu mana yang online
@@ -329,6 +349,44 @@ function handleDeviceMessage(ws, msg) {
       return;
     }
 
+    // ------------------------------------------------------------------
+    // Phase F: file manager (relay pesan kontrol file ke owner controllers)
+    // ------------------------------------------------------------------
+
+    case 'file_result':
+    case 'file_download_start':
+    case 'file_upload_ready':
+    case 'file_done': {
+      // Respons file dari device: refresh watchdog lalu relay.
+      refreshFileWatchdog(ws.deviceId, device.user_id);
+      notifyControllers(device.user_id, {
+        type: msg.type, deviceId: ws.deviceId,
+        op: typeof msg.op === 'string' ? msg.op.slice(0, 16) : undefined,
+        requestId: typeof msg.requestId === 'string' ? msg.requestId.slice(0, 64) : undefined,
+        transferId: typeof msg.transferId === 'string' ? msg.transferId.slice(0, 64) : undefined,
+        success: !!msg.success,
+        error: typeof msg.error === 'string' ? msg.error.slice(0, 300) : undefined,
+        data: msg.data && typeof msg.data === 'object' ? msg.data : undefined,
+        size: Number.isFinite(msg.size) ? msg.size : undefined,
+        chunkSize: Number.isFinite(msg.chunkSize) ? msg.chunkSize : undefined,
+        window: Number.isFinite(msg.window) ? msg.window : undefined,
+        name: typeof msg.name === 'string' ? msg.name.slice(0, 255) : undefined,
+        crc32: Number.isFinite(msg.crc32) ? msg.crc32 : undefined,
+      });
+      return;
+    }
+
+    case 'file_ack': {
+      // ACK chunk upload: sangat sering — relay minimalis + refresh watchdog.
+      refreshFileWatchdog(ws.deviceId, device.user_id);
+      notifyControllers(device.user_id, {
+        type: 'file_ack', deviceId: ws.deviceId,
+        transferId: typeof msg.transferId === 'string' ? msg.transferId.slice(0, 64) : undefined,
+        ackedSeq: Number.isFinite(msg.ackedSeq) ? msg.ackedSeq : undefined,
+      });
+      return;
+    }
+
     default:
       // Type tak dikenal diabaikan (jangan crash).
       return;
@@ -365,6 +423,36 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 // Command berat/boros yang perlu rate limit per controller.
 const HEAVY_COMMANDS = new Set(['SCREENSHOT', 'GET_DEVICE_INFO']);
+
+/**
+ * Phase F: refresh watchdog transfer file per (deviceId, controller ws).
+ * Jika tidak ada traffic file (JSON result/ack ATAU binary chunk) dalam
+ * 30 detik, transfer dianggap mati: controller diberi tahu, penanda dibersihkan.
+ * Device menghentikan transfernya sendiri via no-viewer/cancelAll cleanup.
+ */
+function refreshFileWatchdog(deviceId, userId) {
+  const wdMap = deviceFileWatchdogs.get(deviceId) || new Map();
+  deviceFileWatchdogs.set(deviceId, wdMap);
+  for (const ctrl of controllersOfUser(userId)) {
+    if (ctrl.readyState !== 1) continue;
+    if (!controllerFiles.get(ctrl)?.has(deviceId)) continue;
+    const prev = wdMap.get(ctrl);
+    if (prev) clearTimeout(prev);
+    const t = setTimeout(() => {
+      controllerFiles.get(ctrl)?.delete(deviceId);
+      wdMap.delete(ctrl);
+      safeSend(ctrl, { type: 'file_result', deviceId, op: 'transfer', success: false, error: 'Transfer file timeout' });
+    }, 30_000);
+    if (typeof t.unref === 'function') t.unref();
+    wdMap.set(ctrl, t);
+  }
+}
+
+/** Tandai transfer file aktif untuk controller (binary path + watchdog). */
+function beginFileTransfer(ws, deviceId) {
+  controllerFiles.get(ws)?.add(deviceId);
+  refreshFileWatchdog(deviceId, ws.userId);
+}
 
 function handleControllerMessage(ws, msg) {
   switch (msg.type) {
@@ -488,6 +576,60 @@ function handleControllerMessage(ws, msg) {
       return;
     }
 
+    // ------------------------------------------------------------------
+    // Phase F: file manager — controller meminta op ke device miliknya
+    // ------------------------------------------------------------------
+
+    case 'file_op': {
+      const deviceId = msg.deviceId;
+      if (typeof deviceId !== 'string') return safeSend(ws, { type: 'error', error: 'deviceId wajib' });
+      const op = typeof msg.op === 'string' ? msg.op : '';
+      const allowed = new Set(['list', 'mkdir', 'rename', 'delete', 'stat', 'readText', 'download', 'upload']);
+      if (!allowed.has(op)) return safeSend(ws, { type: 'error', error: 'file_op tidak dikenal', deviceId });
+      const device = store.getDeviceForUser(deviceId, ws.userId);
+      if (!device) return safeSend(ws, { type: 'error', error: 'Device tidak ditemukan', deviceId });
+      const sockets = deviceSockets.get(deviceId);
+      if (!sockets || sockets.size === 0) return safeSend(ws, { type: 'error', error: 'Device offline', deviceId });
+
+      const out = {
+        type: 'file_op', op,
+        requestId: typeof msg.requestId === 'string' ? msg.requestId.slice(0, 64) : undefined,
+        path: typeof msg.path === 'string' ? msg.path.slice(0, 512) : '',
+        newName: typeof msg.newName === 'string' ? msg.newName.slice(0, 255) : undefined,
+        transferId: typeof msg.transferId === 'string' ? msg.transferId.slice(0, 64) : undefined,
+        name: typeof msg.name === 'string' ? msg.name.slice(0, 255) : undefined,
+        size: Number.isFinite(msg.size) ? Math.floor(msg.size) : undefined,
+      };
+      if (op === 'download' || op === 'upload') beginFileTransfer(ws, deviceId);
+      const target = sockets.values().next().value;
+      safeSend(target, out);
+      return;
+    }
+
+    case 'file_ack':
+    case 'file_done':
+    case 'file_cancel': {
+      const deviceId = msg.deviceId;
+      if (typeof deviceId !== 'string') return;
+      const device = store.getDeviceForUser(deviceId, ws.userId);
+      if (!device) return;
+      const sockets = deviceSockets.get(deviceId);
+      if (!sockets) return;
+      if (msg.type === 'file_cancel') {
+        controllerFiles.get(ws)?.delete(deviceId);
+        const wdMap = deviceFileWatchdogs.get(deviceId);
+        if (wdMap) { clearTimeout(wdMap.get(ws) || 0); wdMap.delete(ws); }
+      }
+      const target = sockets.values().next().value;
+      safeSend(target, {
+        type: msg.type,
+        transferId: typeof msg.transferId === 'string' ? msg.transferId.slice(0, 64) : undefined,
+        ackedSeq: Number.isFinite(msg.ackedSeq) ? msg.ackedSeq : undefined,
+        crc32: Number.isFinite(msg.crc32) ? msg.crc32 : undefined,
+      });
+      return;
+    }
+
     case 'guard_config_update': {
       const deviceId = msg.deviceId;
       if (typeof deviceId !== 'string') return safeSend(ws, { type: 'error', error: 'deviceId wajib' });
@@ -568,6 +710,9 @@ function teardown(ws) {
       if (set.size === 0) {
         deviceSockets.delete(ws.deviceId);
         lastDeviceInfo.delete(ws.deviceId);
+        // Phase F: watchdog file device ini tidak berguna lagi.
+        const wdMapF = deviceFileWatchdogs.get(ws.deviceId);
+        if (wdMapF) { for (const t of wdMapF.values()) clearTimeout(t); deviceFileWatchdogs.delete(ws.deviceId); }
         // Semua stream dari device ini pasti berhenti (socket mati).
         for (const setS of controllerStreams.values()) setS.delete(ws.deviceId);
         for (const setC of controllerCameras.values()) setC.delete(ws.deviceId);
@@ -600,6 +745,12 @@ function teardown(ws) {
   controllerStreams.delete(ws);
   controllerShots.delete(ws);
   controllerCameras.delete(ws);
+  controllerFiles.delete(ws);
+  // Phase F: bersihkan watchdog file yang menunjuk controller ini.
+  for (const wdMap of deviceFileWatchdogs.values()) {
+    const t = wdMap.get(ws);
+    if (t) { clearTimeout(t); wdMap.delete(ws); }
+  }
   // Controller yang menonton kamera hilang: watchdog device-nya tidak berguna
   // lagi; device akan berhenti sendiri lewat no-viewer watchdog di sisi APK.
   for (const wdMap of deviceCameraWatchdogs.values()) {

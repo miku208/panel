@@ -30,6 +30,8 @@ data class GuardConfig(
     val storageLowThresholdGb: Int = 2,
     val ramHighThreshold: Int = 90,
     val temperatureHighThreshold: Int = 45,
+    // File Manager: batas upload remote (MB), 0 = default engine (200 MB).
+    val maxUploadSizeMb: Int = 0,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("enabled", enabled)
@@ -50,6 +52,7 @@ data class GuardConfig(
         put("storageLowThresholdGb", storageLowThresholdGb)
         put("ramHighThreshold", ramHighThreshold)
         put("temperatureHighThreshold", temperatureHighThreshold)
+        put("maxUploadSizeMb", maxUploadSizeMb)
     }
 
     companion object {
@@ -73,6 +76,7 @@ data class GuardConfig(
             storageLowThresholdGb = o.optInt("storageLowThresholdGb", 2).coerceIn(0, 512),
             ramHighThreshold = o.optInt("ramHighThreshold", 90).coerceIn(0, 100),
             temperatureHighThreshold = o.optInt("temperatureHighThreshold", 45).coerceIn(20, 90),
+            maxUploadSizeMb = o.optInt("maxUploadSizeMb", 0).coerceIn(0, 4096),
         )
     }
 }

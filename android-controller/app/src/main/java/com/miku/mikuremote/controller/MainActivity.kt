@@ -41,6 +41,7 @@ private val Line = Color(0xFF21262D)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppContextHolder.init(this)
         setContent { MikuRemoteApp() }
     }
 }
@@ -57,6 +58,7 @@ private sealed class Screen {
     data class Live(val deviceId: String, val name: String) : Screen()
     data class Camera(val deviceId: String, val name: String) : Screen()
     data class Guard(val deviceId: String, val name: String) : Screen()
+    data class Files(val deviceId: String, val name: String) : Screen()
 }
 
 data class LogEntryUi(val ts: Long, val level: String, val message: String)
@@ -285,7 +287,17 @@ private fun MikuRemoteApp() {
                         onOpenLive = { screen = Screen.Live(s.deviceId, s.name) },
                         onOpenCamera = { screen = Screen.Camera(s.deviceId, s.name) },
                         onOpenGuard = { screen = Screen.Guard(s.deviceId, s.name) },
+                        onOpenFiles = { screen = Screen.Files(s.deviceId, s.name) },
                         onRevoked = { screen = Screen.Devices },
+                        showSnack = { showSnack(it) },
+                    )
+                }
+                screen is Screen.Files -> {
+                    val s = screen as Screen.Files
+                    FilesScreen(
+                        deviceId = s.deviceId,
+                        deviceOnline = onlineMap[s.deviceId] ?: false,
+                        onBack = { screen = Screen.Detail(s.deviceId, s.name) },
                         showSnack = { showSnack(it) },
                     )
                 }
@@ -553,6 +565,7 @@ private fun DetailScreen(
     onOpenLive: () -> Unit,
     onOpenCamera: () -> Unit,
     onOpenGuard: () -> Unit,
+    onOpenFiles: () -> Unit,
     onRevoked: () -> Unit,
     showSnack: suspend (String) -> Unit,
 ) {
@@ -653,6 +666,8 @@ private fun DetailScreen(
 
         // Phase 3B: front camera + server guard
         ActionButton("FRONT CAMERA", enabled = online, onClick = onOpenCamera)
+        Spacer(Modifier.height(10.dp))
+        ActionButton("FILES", enabled = online, onClick = onOpenFiles)
         Spacer(Modifier.height(10.dp))
         ActionButton("SERVER GUARD", enabled = true, onClick = onOpenGuard)
         Spacer(Modifier.height(10.dp))

@@ -1,12 +1,37 @@
 # MikuRemote
 
 Aplikasi untuk mengontrol dan memantau HP Android lain yang dipakai sebagai
-mini server di rumah. **v0.5.1: Unattended sejati** — konsep Auto Start
-ON/OFF dihapus: setelah device terpairing, server dianggap SELALU aktif
-(buka app = service pasti jalan, boot = BootReceiver menjalankan service).
-Plus fix state machine WS (ONLINE hanya setelah auth_ok — tanpa fake ONLINE),
-anti duplikat koneksi WebSocket, heartbeat 30 detik, dan endpoint VPS tidak
-eklik ditampilkan plaintext di UI.
+mini server di rumah. **v0.6.0: Remote File Manager (Phase 5)** — browse,
+download, upload, rename, delete, buat folder, dan preview teks file di HP
+server langsung dari controller, dengan transfer streaming (sliding window
++ CRC32, RAM tetap terbatas walau file besar) dan root tunggal yang
+divalidasi ketat (anti path traversal).
+Plus v0.5.1: unattended sejati — konsep Auto Start ON/OFF dihapus: setelah
+device terpairing, server dianggap SELALU aktif (buka app = service pasti
+jalan, boot = BootReceiver menjalankan service), state machine WS jujur
+(ONLINE hanya setelah auth_ok — tanpa fake ONLINE), anti duplikat koneksi
+WebSocket, heartbeat 30 detik, dan endpoint VPS tidak ditampilkan plaintext
+di UI.
+
+> **v0.6.0 (Phase 5: remote file manager):**
+> - **FILES di Device Detail**: browse /storage/emulated/0 di HP server
+>   (list, navigasi folder, muat ulang).
+> - **Download** file → tersimpan di Download/MikuRemote di HP controller
+>   dengan progress bar + verifikasi CRC32 (file dibuang bila korup).
+> - **Upload** file dari controller (picker) → folder aktif di HP server,
+>   streaming chunk 48 KB dengan window 8 + ACK per chunk, default maks
+>   200 MB (dapat diubah via config `maxUploadSizeMb`).
+> - **mkdir / rename / delete** dengan konfirmasi + preview teks (maks 64 KB).
+> - **Keamanan**: hanya root /storage/emulated/0; canonical-path validation
+>   (menangkal `../` dan symlink escape); tidak ada akses /data, /system,
+>   /proc, /sys, private app dirs; upload ditulis ke `.part` lalu direname
+>   setelah CRC cocok; binary controller→device HANYA untuk chunk upload
+>   yang terdaftar; VPS tetap verifikasi ownership per frame.
+> - **Bounded memory**: tidak ada file yang dimuat utuh ke RAM — chunk
+>   dibaca/ditulis incremental; watchdog VPS 30 detik memutus transfer
+>   mati; `file_cancel` membersihkan state di kedua sisi.
+> - Device harus mengizinkan **All-Files-Access** (Android 11+) — tombol
+>   pengaturan resmi muncul di app server saat FILES dipakai.
 
 > **v0.5.1 (unattended hardening):**
 > - **Tanpa tombol START SERVER**: app dibuka → service langsung dipastikan
@@ -122,6 +147,7 @@ mikuremote/
 | 3B | Front camera, Server Guard, remote config, konflik stream, watchdog | ✅ Selesai |
 | 4 | Auto Start (boot receiver), always connected, reliability panel | ✅ Selesai |
 | 4.1 | Unattended sejati (tanpa toggle), state machine jujur, anti duplikat WS | ✅ Selesai |
+| 5 | Remote File Manager (browse/download/upload/rename/delete, streaming + CRC32) | ✅ Selesai |
 | 5 | Hardening lanjutan, rotasi kunci device, audit log VPS | ⏳ Sebagian |
 
 Yang sudah berfungsi end-to-end: register/login, pairing via kode 6 digit,
