@@ -1,0 +1,25 @@
+# Node
+server/node_modules/
+server/data/
+server/.env
+server/pm2.log
+
+# Signing (jangan pernah commit keystore / credentials)
+keystore.properties
+*.keystore
+*.jks
+
+# Android
+android-server/.gradle/
+android-server/build/
+android-server/app/build/
+android-server/local.properties
+android-controller/.gradle/
+android-controller/build/
+android-controller/app/build/
+android-controller/local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store

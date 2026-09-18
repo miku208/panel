@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">MikuRemote Server</string>
+    <string name="notif_channel_name">MikuRemote Server</string>
+    <string name="notif_channel_desc">Status koneksi server MikuRemote</string>
+</resources>

@@ -1,0 +1,14 @@
+<resources>
+    <style name="Theme.MikuRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0E1116</item>
+        <item name="android:statusBarColor">#0E1116</item>
+        <item name="android:navigationBarColor">#0E1116</item>
+    </style>
+
+    <style name="Theme.Blackout" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simbol: remote/gamepad sederhana -->
+    <path
+        android:fillColor="#39D98A"
+        android:pathData="M40,46h28v16h-28z M46,42h4v4h-4z M58,42h4v4h-4z" />
+    <path
+        android:fillColor="#0E1116"
+        android:pathData="M46,52a2,2 0 1,0 4,0a2,2 0 1,0 -4,0 M58,52a2,2 0 1,0 4,0a2,2 0 1,0 -4,0" />
+</vector>
