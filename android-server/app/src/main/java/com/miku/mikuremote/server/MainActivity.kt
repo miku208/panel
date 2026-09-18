@@ -51,6 +51,13 @@ class MainActivity : ComponentActivity() {
             else LogBuffer.log("WARN", "[CAMERA] Izin kamera ditolak — FRONT CAMERA tidak akan jalan")
         }
 
+    // Phase F: izin storage legacy (Android ≤10) untuk File Manager.
+    private val storagePerm =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) LogBuffer.log("INFO", "[FILE] Izin storage diberikan")
+            else LogBuffer.log("WARN", "[FILE] Izin storage ditolak — File Manager tidak akan jalan")
+        }
+
     private fun requestCameraPermissionIfNeeded() {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
                 this, Manifest.permission.CAMERA
@@ -233,6 +240,35 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
                         ) { Text("📦 ENABLE FRONT CAMERA (izin kamera)") }
+
+                        // Phase F: akses file untuk Remote File Manager.
+                        // Android 11+: All-Files-Access via pengaturan resmi.
+                        // Android ≤10: READ_EXTERNAL_STORAGE runtime.
+                        val hasStorage = FileManager.hasStorageAccess(this@MainActivity)
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                                        startActivity(
+                                            android.content.Intent(
+                                                android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                                android.net.Uri.parse("package:$packageName")
+                                            )
+                                        )
+                                    } else {
+                                        storagePerm.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                                    }
+                                } catch (e: Exception) {
+                                    LogBuffer.log("WARN", "Gagal buka settings storage: ${e.message}")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = if (hasStorage) Accent else TextMain
+                            )
+                        ) {
+                            Text(if (hasStorage) "🗂 FILE ACCESS: GRANTED" else "🗂 ENABLE FILE MANAGER (akses file)")
+                        }
 
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
