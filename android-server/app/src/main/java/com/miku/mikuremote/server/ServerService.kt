@@ -107,6 +107,7 @@ class ServerService : Service() {
                 when (state) {
                     WsClient.ConnState.ONLINE -> updateNotification("Connected")
                     WsClient.ConnState.CONNECTING -> updateNotification("Connecting…")
+                    WsClient.ConnState.AUTHENTICATING -> updateNotification("Authenticating…")
                     WsClient.ConnState.OFFLINE -> {
                         updateNotification("Reconnecting…")
                         // Laporkan RECONNECTING ke controller (sekali per transisi).
@@ -515,6 +516,7 @@ class ServerService : Service() {
     private fun notificationStateText(): String = when (ServiceBus.wsState.value) {
         "ONLINE" -> "Connected"
         "CONNECTING" -> "Connecting…"
+        "AUTHENTICATING" -> "Authenticating…"
         else -> "Reconnecting…"
     }
 

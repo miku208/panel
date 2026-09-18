@@ -105,9 +105,6 @@ class MainActivity : ComponentActivity() {
         val logs by LogBuffer.entries.collectAsState()
         val scope = lifecycleScope
 
-        // Auto Start: toggle persisten (BootReceiver membaca nilai ini setelah reboot).
-        var autoStart by remember { mutableStateOf(prefs.autoStart) }
-        var batOptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations()) }
 
         var editUrl by remember { mutableStateOf(false) }
         var vpsUrl by remember { mutableStateOf(prefs.vpsUrl) }
@@ -115,10 +112,27 @@ class MainActivity : ComponentActivity() {
         var keyMsg by remember { mutableStateOf<String?>(null) }
         var keyBusy by remember { mutableStateOf(false) }
         var resetConfirm by remember { mutableStateOf(false) }
+        var batOptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations()) }
 
         // Mode pribadi aktif jika kunci di-inject saat build ATAU tersimpan di prefs.
         val hasKey = BuildConfig.PRIVATE_KEY.isNotBlank() || !prefs.privateKey.isNullOrBlank()
         val paired = prefs.isPaired
+
+        // Auto Start SELALU aktif setelah pairing (bukan setting).
+        // App dibuka = pastikan service jalan (no-op jika sudah jalan;
+        // single-instance guard di ServerService mencegah WS ganda).
+        // Jika izin notifikasi (Android 13+) belum ada, minta sekali dulu;
+        // penolakan tidak menghalangi service (callback tetap mem-start).
+        LaunchedEffect(paired) {
+            if (!paired) return@LaunchedEffect
+            val notifGranted = if (Build.VERSION.SDK_INT >= 33) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+            if (notifGranted) ServerService.start(this@MainActivity)
+            else notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         MaterialTheme(
             colorScheme = darkColorScheme(
@@ -148,7 +162,9 @@ class MainActivity : ComponentActivity() {
                                     Text(wsState, color = TextMain, fontSize = 14.sp)
                                 }
                                 Spacer(Modifier.height(4.dp))
-                                Text("VPS: ${prefs.vpsUrl}", color = TextDim, fontSize = 12.sp)
+                                // Endpoint tidak ditampilkan plaintext (spec keamanan).
+                                // Yang melindungi akses: auth token + HTTPS/WSS.
+                                Text("VPS: terhubung via HTTPS/WSS (endpoint tersimpan aman)", color = TextDim, fontSize = 12.sp)
                                 Spacer(Modifier.height(6.dp))
                                 // ---- Status ringkas Phase 3B ----
                                 Text(
@@ -159,31 +175,13 @@ class MainActivity : ComponentActivity() {
                         }
                         Spacer(Modifier.height(14.dp))
 
-                        // ---- Auto Start + Reliability (Phase 4: unattended) ----
+                        // ---- Reliability (unattended) ----
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("AUTO START SERVER", color = TextMain, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                        Text(
-                                            "Automatically start MikuRemote Server after device boot.",
-                                            color = TextDim, fontSize = 12.sp
-                                        )
-                                    }
-                                    Switch(
-                                        checked = autoStart,
-                                        onCheckedChange = {
-                                            prefs.autoStart = it
-                                            autoStart = it
-                                            LogBuffer.log("INFO", "Auto Start ${if (it) "ON" else "OFF"}")
-                                        }
-                                    )
-                                }
-                                Spacer(Modifier.height(10.dp))
                                 Text("SERVER RELIABILITY", color = TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.height(6.dp))
                                 ReliabilityRow("Device paired", paired)
-                                ReliabilityRow("Auto Start enabled", autoStart)
+                                ReliabilityRow("Auto Start (selalu aktif)", true)
                                 ReliabilityRow("Battery optimization ignored", batOptimized)
                                 ReliabilityRow("Camera permission", hasCameraPermission())
                                 ReliabilityRow("VPS ${when (wsState) { "ONLINE" -> "connected"; "CONNECTING" -> "connecting…"; else -> "disconnected" }}", wsState == "ONLINE")
@@ -212,18 +210,10 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(14.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (!running) {
-                                Button(onClick = {
-                                    if (Build.VERSION.SDK_INT >= 33) {
-                                        notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    } else {
-                                        ServerService.start(this@MainActivity)
-                                    }
-                                }) { Text("START SERVER") }
-                            } else {
-                                OutlinedButton(onClick = { ServerService.stop(this@MainActivity) }) {
-                                    Text("STOP")
-                                }
+                            // Server selalu berjalan (unattended): tombol START
+                            // dihapus. Buka app = service dipastikan jalan.
+                            OutlinedButton(onClick = { ServerService.stop(this@MainActivity) }) {
+                                Text("STOP")
                             }
                             OutlinedButton(
                                 onClick = {

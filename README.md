@@ -1,11 +1,27 @@
 # MikuRemote
 
 Aplikasi untuk mengontrol dan memantau HP Android lain yang dipakai sebagai
-mini server di rumah. **v0.5.0: Auto Start / Always Connected (Phase 4)** —
-HP server dibiarkan menyala tanpa pernah dibuka lagi: setelah boot, service
-otomatis start (RECEIVE_BOOT_COMPLETED resmi), connect VPS, dan muncul ONLINE
-di controller. Plus semua fitur v0.4.0 (front camera + Server Guard),
-v0.3.0 (live screen + screenshot), dan v0.2.x.
+mini server di rumah. **v0.5.1: Unattended sejati** — konsep Auto Start
+ON/OFF dihapus: setelah device terpairing, server dianggap SELALU aktif
+(buka app = service pasti jalan, boot = BootReceiver menjalankan service).
+Plus fix state machine WS (ONLINE hanya setelah auth_ok — tanpa fake ONLINE),
+anti duplikat koneksi WebSocket, heartbeat 30 detik, dan endpoint VPS tidak
+eklik ditampilkan plaintext di UI.
+
+> **v0.5.1 (unattended hardening):**
+> - **Tanpa tombol START SERVER**: app dibuka → service langsung dipastikan
+>   berjalan (single-instance guard mencegah WS ganda). Toggle AUTO START
+>   dihapus dari UI dan Prefs; BootReceiver cukup mengecek status pairing.
+> - **State machine jujur**: `CONNECTING → AUTHENTICATING → ONLINE`.
+>   ONLINE baru di-set setelah VPS mengirim `auth_ok` (token tervalidasi) —
+>   tidak ada lagi fake ONLINE saat socket terbuka tapi auth belum lolos.
+> - **Anti koneksi ganda**: generation guard di WsClient — callback socket
+>   lama (hasil reconnectNow/stop) diabaikan, tidak bisa memicu reconnect
+>   kedua. Backoff reconnect: 2s → 4s → 8s → 16s → 30s → 60s.
+> - **Heartbeat 30s** (sebelumnya 15s) — hemat resource untuk server 24/7.
+> - **Endpoint VPS tidak lagi tampil plaintext** di status card server app.
+> - **VPS**: pm2 `--max-memory-restart=400M` — proses relay otomatis
+>   di-restart bila memori membengkak; device reconnect otomatis setelahnya.
 
 > **v0.5.0 (Phase 4: unattended):**
 > - **BootReceiver**: BOOT_COMPLETED → auto-start ServerService (hanya jika
@@ -105,6 +121,7 @@ mikuremote/
 | 3 | MediaProjection, live screen, screenshot | ✅ Selesai |
 | 3B | Front camera, Server Guard, remote config, konflik stream, watchdog | ✅ Selesai |
 | 4 | Auto Start (boot receiver), always connected, reliability panel | ✅ Selesai |
+| 4.1 | Unattended sejati (tanpa toggle), state machine jujur, anti duplikat WS | ✅ Selesai |
 | 5 | Hardening lanjutan, rotasi kunci device, audit log VPS | ⏳ Sebagian |
 
 Yang sudah berfungsi end-to-end: register/login, pairing via kode 6 digit,
@@ -161,7 +178,8 @@ Install `MikuRemote-Server-v0.3.0-release.apk` (atau build sendiri, lihat bawah)
 1. Buka aplikasi **MikuRemote Server**.
 2. Isi **VPS URL** (default `https://ashimusic.biz.id/mikuremote`) + **pairing code**
    6 digit dari Controller.
-3. Tekan **PAIR** → **START SERVER**.
+3. Tekan **PAIR** → service langsung berjalan (v0.5.1: tanpa tombol START
+   SERVER — setelah pairing, server dianggap selalu aktif).
 4. Beri izin notifikasi (Android 13+) saat diminta.
 
 Service foreground akan tampil sebagai notifikasi permanen
